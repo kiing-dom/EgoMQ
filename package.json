@@ -1,0 +1,12 @@
+{
+  "scripts": {
+    "test": "bun test",
+    "example": "bun examples/basic.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}
