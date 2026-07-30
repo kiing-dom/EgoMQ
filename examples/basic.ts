@@ -6,11 +6,12 @@ queue.register("hello", async(payload: {name: string}) => {
     console.log(`hello ${payload.name}!`);
 })
 
-await queue.enqueue({
-    type: "hello",
-    payload: {
-        name: "dom",
-    },
-});
+await queue.enqueue("hello", { name: "dom"});
+
+console.log("jobs remaining:", queue.getJobs())
+queue.getJobs();
 
 await queue.start();
+
+console.log("jobs remaining:", queue.getJobs())
+queue.getJobs();

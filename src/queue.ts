@@ -10,13 +10,21 @@ export class Queue {
         this.handlers.set(type, handler);
     }
 
-    async enqueue(job: Job) {
+    async enqueue(type: string, payload: unknown) {
+        const job: Job = {
+            id: crypto.randomUUID(),
+            type,
+            payload,
+            status: "pending",
+            createdAt: new Date(),
+        };
+
         this.jobs.push(job);
     }
 
     async start() {
         while (this.jobs.length > 0) {
-            const job = this.jobs.shift()!;
+            const job = this.jobs.shift()!; 
             const handler = this.handlers.get(job.type);
             
             if (!handler) {
@@ -30,5 +38,9 @@ export class Queue {
                 console.error(`Error processing job ${job.type}:`, error);
             }
         }
+    }
+
+    getJobs(): Job[] {
+        return this.jobs;
     }
 }
