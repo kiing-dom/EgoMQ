@@ -40,4 +40,20 @@ describe("Queue", () => {
             createdAt: expect.any(Date),
         });
     });
+
+    it("completes job when successful", async() => {
+        const queue = new Queue();
+
+        const handler = vi.fn();
+
+        queue.register("get_balance", handler);
+        await queue.enqueue("get_balance", {
+            balance: 9.50,
+        });
+
+        const job: Job = queue.getJobs()[0];
+        expect(job.status).toBe("pending");
+        await queue.start();
+        expect(job.status).toBe("completed");
+    })
 });
