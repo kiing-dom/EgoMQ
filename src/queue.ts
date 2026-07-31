@@ -40,7 +40,7 @@ export class Queue {
                 job.status = "completed";
             } catch (error) {
                 job.status = "failed";
-                console.error(`Error processing job ${job.type}:`, error);
+                job.error = error instanceof Error ? error.message : String(error);
             }
         }
     }
