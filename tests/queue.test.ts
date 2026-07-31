@@ -41,7 +41,7 @@ describe("Queue", () => {
         });
     });
 
-    it("completes job when successful", async() => {
+    it("sets job as 'completed' when successful", async() => {
         const queue = new Queue();
 
         const handler = vi.fn();
@@ -55,5 +55,23 @@ describe("Queue", () => {
         expect(job.status).toBe("pending");
         await queue.start();
         expect(job.status).toBe("completed");
-    })
+    });
+
+    it ("sets job as 'failed' when unsuccessful", async() => {
+        const queue = new Queue();
+
+        const handler = async () => {
+            throw new Error("FAILED");
+        };
+
+        queue.register("totally_gonna_work", handler);
+        await queue.enqueue("totally_gonna_work", {
+            result: "huge surprise",
+        });
+
+        const job = queue.getJobs()[0];
+        expect(job.status).toBe("pending");
+        await queue.start();
+        expect(job.status).toBe("failed");
+    });
 });
