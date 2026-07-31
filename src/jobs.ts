@@ -10,4 +10,5 @@ export interface Job {
     payload: unknown;
     status: JobStatus;
     createdAt: Date;
+    error?: string;
 }

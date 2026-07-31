@@ -32,9 +32,9 @@ export class Queue {
                 continue;
             }
 
-            job.status = "running";
-
+            
             try {
+                job.status = "running";
                 await handler(job.payload);
 
                 job.status = "completed";
