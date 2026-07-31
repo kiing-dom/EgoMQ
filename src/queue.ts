@@ -32,9 +32,14 @@ export class Queue {
                 continue;
             }
 
+            job.status = "running";
+
             try {
                 await handler(job.payload);
+
+                job.status = "completed";
             } catch (error) {
+                job.status = "failed";
                 console.error(`Error processing job ${job.type}:`, error);
             }
         }
