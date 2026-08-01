@@ -17,6 +17,7 @@ export class Queue {
       payload,
       status: "pending",
       createdAt: new Date(),
+      
     };
 
     this.jobs.push(job);

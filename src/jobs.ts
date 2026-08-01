@@ -10,5 +10,7 @@ export interface Job {
     payload: unknown;
     status: JobStatus;
     createdAt: Date;
+    attempts: number;
+    maxAttempts: number;
     error?: string;
 }
