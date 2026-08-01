@@ -1,4 +1,5 @@
 import type { Job } from "./jobs";
+import { DEFAULT_MAX_ATTEMPTS } from "./retry";
 
 type JobHandler = (payload: any) => Promise<void> | void;
 
@@ -10,14 +11,21 @@ export class Queue {
     this.handlers.set(type, handler);
   }
 
-  async enqueue(type: string, payload: unknown) {
+  async enqueue(
+    type: string,
+    payload: unknown,
+    options?: { maxAttempts?: number },
+  ) {
+    const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+
     const job: Job = {
       id: crypto.randomUUID(),
       type,
       payload,
       status: "pending",
       createdAt: new Date(),
-      
+      attempts: 0,
+      maxAttempts,
     };
 
     this.jobs.push(job);
@@ -39,8 +47,14 @@ export class Queue {
 
         job.status = "completed";
       } catch (error) {
-        job.status = "failed";
+        job.attempts += 1;
         job.error = error instanceof Error ? error.message : String(error);
+
+        if (job.attempts < job.maxAttempts) {
+          job.status = "pending";
+        } else {
+          job.status = "failed";
+        }
       }
     }
   }
