@@ -57,6 +57,7 @@ describe("Queue", () => {
     });
 
     it ("requeues failed so 'start()' eventually processes it again", async () => {
+        vi.useFakeTimers();
         const queue = new Queue();
 
         const handler = vi.fn()
@@ -66,14 +67,21 @@ describe("Queue", () => {
         queue.register("lock_in", handler);
         const job = await queue.enqueue("lock_in", {to: "dom@email.com"});
 
-        await queue.start();
+        const startPromise = queue.start();
+
+        await vi.runAllTimersAsync();
+        await startPromise;
 
         expect(job.status).toBe("completed");
         expect(job.retries).toBe(1);
         expect(handler).toHaveBeenCalledTimes(2);
+
+        vi.useRealTimers();
     });
 
     it ("stops trying after maxRetries is exhausted and 'start()' terminates", async () => {
+        vi.useFakeTimers();
+
         const queue = new Queue();
 
         const handler = vi.fn().mockRejectedValue(new Error("it's broke"));
@@ -81,10 +89,36 @@ describe("Queue", () => {
 
         const job = await queue.enqueue("tough_times", {}, { maxRetries: 2});
         
-        await queue.start();
+        const startPromise = queue.start();
+
+        await vi.runAllTimersAsync();
+        await startPromise;
 
         expect(job.status).toBe("failed");
         expect(job.retries).toBe(2);
         expect(handler).toHaveBeenCalledTimes(2);
-    }, 10_000);
+
+        vi.useRealTimers();
+    });
+
+    it ("processNext() waits for backoff before returning the retried job", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue();
+        const handler = vi.fn()
+            .mockRejectedValueOnce(new Error("failed"))
+            .mockResolvedValueOnce(undefined);
+        
+        queue.register("some_job_event", handler);
+
+        await queue.enqueue("some_job_event", {});
+        await queue.processNext(); // should fail if i'm not stupid
+
+        const resultPromise = queue.processNext();
+        await vi.advanceTimersByTimeAsync(5000);
+        const result = await resultPromise;
+
+        expect(result?.status).toBe("completed");
+        vi.useRealTimers();
+    })
 });

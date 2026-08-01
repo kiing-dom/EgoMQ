@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test": "bun test",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "example": "bun examples/basic.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsc"
