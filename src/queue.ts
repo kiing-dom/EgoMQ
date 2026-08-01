@@ -1,5 +1,6 @@
 import type { Job } from "./jobs";
 import { DEFAULT_MAX_ATTEMPTS } from "./retry";
+import { processJob } from "./utils/jobUtils";
 
 type JobHandler = (payload: any) => Promise<void> | void;
 
@@ -14,9 +15,9 @@ export class Queue {
   async enqueue(
     type: string,
     payload: unknown,
-    options?: { maxAttempts?: number },
-  ) {
-    const maxAttempts = options?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+    options?: { maxRetries?: number },
+  ) : Promise<Job> {
+    const maxRetries = options?.maxRetries ?? DEFAULT_MAX_ATTEMPTS;
 
     const job: Job = {
       id: crypto.randomUUID(),
@@ -24,11 +25,12 @@ export class Queue {
       payload,
       status: "pending",
       createdAt: new Date(),
-      attempts: 0,
-      maxAttempts,
+      retries: 0,
+      maxRetries,
     };
 
     this.jobs.push(job);
+    return job;
   }
 
   async start() {
@@ -41,20 +43,10 @@ export class Queue {
         continue;
       }
 
-      try {
-        job.status = "running";
-        await handler(job.payload);
+      await processJob(job, handler);
 
-        job.status = "completed";
-      } catch (error) {
-        job.attempts += 1;
-        job.error = error instanceof Error ? error.message : String(error);
-
-        if (job.attempts < job.maxAttempts) {
-          job.status = "pending";
-        } else {
-          job.status = "failed";
-        }
+      if (job.status === "pending") {
+        this.jobs.push(job);
       }
     }
   }

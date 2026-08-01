@@ -7,8 +7,8 @@ export function makeJobMock(overrides?: Partial<Job>): Job {
         payload: {},
         status: "pending",
         createdAt: new Date(),
-        attempts: 0,
-        maxAttempts: 3,
+        retries: 0,
+        maxRetries: 3,
         ...overrides,
     };
 };

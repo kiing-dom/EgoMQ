@@ -57,21 +57,20 @@ describe("Queue", () => {
         expect(job.status).toBe("completed");
     });
 
-    it ("sets job as 'failed' when unsuccessful", async() => {
+    it ("requeues failed so 'start()' eventually processes it again", async() => {
         const queue = new Queue();
 
-        const handler = async () => {
-            throw new Error("FAILED");
-        };
+        const handler = vi.fn()
+            .mockRejectedValueOnce(new Error("idk"))
+            .mockResolvedValueOnce(undefined);
 
-        queue.register("totally_gonna_work", handler);
-        await queue.enqueue("totally_gonna_work", {
-            result: "huge surprise",
-        });
+        queue.register("lock_in", handler);
+        const job = await queue.enqueue("lock_in", {to: "dom@email.com"});
 
-        const job = queue.getJobs()[0];
-        expect(job.status).toBe("pending");
         await queue.start();
-        expect(job.status).toBe("failed");
+
+        expect(job.status).toBe("completed");
+        expect(job.retries).toBe(1);
+        expect(handler).toHaveBeenCalledTimes(2);
     });
 });

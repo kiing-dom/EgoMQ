@@ -1,15 +1,15 @@
 import { Job } from "../jobs";
 
-export async function processJob(job: Job, handler: (payload: unknown) => Promise<void>) {
+export async function processJob(job: Job, handler: (payload: unknown) => void | Promise<void>) {
     try {
         job.status = "running";
         await handler(job.payload);
         job.status = "completed";
     } catch (error) {
-        job.attempts += 1;
+        job.retries += 1;
         job.error = error instanceof Error ? error.message : String(error);
 
-        if (job.attempts < job.maxAttempts) {
+        if (job.retries < job.maxRetries) {
             job.status = "pending";
         } else {
             job.status = "failed";
