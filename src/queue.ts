@@ -17,6 +17,7 @@ export class Queue {
     payload: unknown,
     options?: { maxRetries?: number },
   ) : Promise<Job> {
+    const now = new Date();
     const maxRetries = options?.maxRetries ?? DEFAULT_MAX_ATTEMPTS;
 
     const job: Job = {
@@ -24,7 +25,8 @@ export class Queue {
       type,
       payload,
       status: "pending",
-      createdAt: new Date(),
+      createdAt: now,
+      runAt: now,
       retries: 0,
       maxRetries,
     };
@@ -33,21 +35,43 @@ export class Queue {
     return job;
   }
 
+  async processNext(): Promise<Job | undefined> {
+    const now = new Date();
+    const index = this.jobs.findIndex(
+      (j) => j.status === "pending" && j.runAt <= now
+    );
+
+    if (index === -1) {
+      if (this.jobs.length === 0) return undefined;
+
+      const nextRunAt = this.jobs.reduce(
+        (earliest, j) => (j.runAt < earliest ? j.runAt : earliest),
+        this.jobs[0].runAt
+      );
+      const waitMs = Math.max(0, nextRunAt.getTime() - now.getTime());
+      await new Promise((resolve) => setTimeout(resolve, waitMs));
+    }
+
+    const [job] = this.jobs.splice(index, 1);
+    const handler = this.handlers.get(job.type);
+
+    if (!handler) {
+      console.warn(`No handler registered for the job type: ${job.type}`);
+      return job;
+    }
+
+    await processJob(job, handler);
+
+    if (job.status === "pending") {
+      this.jobs.push(job);
+    }
+
+    return job
+  }
+
   async start() {
     while (this.jobs.length > 0) {
-      const job = this.jobs.shift()!;
-      const handler = this.handlers.get(job.type);
-
-      if (!handler) {
-        console.warn(`No handler registered for the job type ${job.type}`);
-        continue;
-      }
-
-      await processJob(job, handler);
-
-      if (job.status === "pending") {
-        this.jobs.push(job);
-      }
+      await this.processNext();
     }
   }
 

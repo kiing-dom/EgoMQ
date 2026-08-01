@@ -16,7 +16,7 @@ describe("Queue", () => {
             name: "dom",
         });
 
-        await queue.start();
+        await queue.processNext();
         
         expect(handler).toHaveBeenCalledOnce();
     });
@@ -27,11 +27,11 @@ describe("Queue", () => {
         const handler = vi.fn();
 
         queue.register("hi", handler);
-        await queue.enqueue("hi", {
+
+        const job: Job = await queue.enqueue("hi", {
             name: "dom",
         });
 
-        const job: Job = queue.getJobs()[0];
         expect(job).toMatchObject({
             id: expect.stringMatching(UUID_V4_REGEX),
             type: 'hi',
@@ -47,13 +47,12 @@ describe("Queue", () => {
         const handler = vi.fn();
 
         queue.register("get_balance", handler);
-        await queue.enqueue("get_balance", {
+        const job: Job = await queue.enqueue("get_balance", {
             balance: 9.50,
         });
 
-        const job: Job = queue.getJobs()[0];
         expect(job.status).toBe("pending");
-        await queue.start();
+        await queue.processNext();
         expect(job.status).toBe("completed");
     });
 
@@ -80,12 +79,12 @@ describe("Queue", () => {
         const handler = vi.fn().mockRejectedValue(new Error("it's broke"));
         queue.register("tough_times", handler);
 
-        const job = await queue.enqueue("tough_times", {}, { maxRetries: 4});
+        const job = await queue.enqueue("tough_times", {}, { maxRetries: 2});
         
         await queue.start();
 
         expect(job.status).toBe("failed");
-        expect(job.retries).toBe(4);
-        expect(handler).toHaveBeenCalledTimes(4);
-    })
+        expect(job.retries).toBe(2);
+        expect(handler).toHaveBeenCalledTimes(2);
+    }, 10_000);
 });

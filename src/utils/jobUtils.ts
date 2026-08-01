@@ -11,6 +11,9 @@ export async function processJob(job: Job, handler: (payload: unknown) => void |
 
         if (job.retries < job.maxRetries) {
             job.status = "pending";
+            
+            const backoffMs = Math.min(1000 * 2 * job.retries, 30_000);
+            job.runAt = new Date(Date.now() + backoffMs);
         } else {
             job.status = "failed";
         }
