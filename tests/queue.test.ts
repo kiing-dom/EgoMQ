@@ -21,7 +21,7 @@ describe("Queue", () => {
         expect(handler).toHaveBeenCalledOnce();
     });
 
-    it("creates a valid job when enqueued", async() => {
+    it("creates a valid job when enqueued", async () => {
         const queue = new Queue();
 
         const handler = vi.fn();
@@ -41,7 +41,7 @@ describe("Queue", () => {
         });
     });
 
-    it("sets job as 'completed' when successful", async() => {
+    it("sets job as 'completed' when successful", async () => {
         const queue = new Queue();
 
         const handler = vi.fn();
@@ -57,7 +57,7 @@ describe("Queue", () => {
         expect(job.status).toBe("completed");
     });
 
-    it ("requeues failed so 'start()' eventually processes it again", async() => {
+    it ("requeues failed so 'start()' eventually processes it again", async () => {
         const queue = new Queue();
 
         const handler = vi.fn()
@@ -73,4 +73,19 @@ describe("Queue", () => {
         expect(job.retries).toBe(1);
         expect(handler).toHaveBeenCalledTimes(2);
     });
+
+    it ("stops trying after maxRetries is exhausted and 'start()' terminates", async () => {
+        const queue = new Queue();
+
+        const handler = vi.fn().mockRejectedValue(new Error("it's broke"));
+        queue.register("tough_times", handler);
+
+        const job = await queue.enqueue("tough_times", {}, { maxRetries: 4});
+        
+        await queue.start();
+
+        expect(job.status).toBe("failed");
+        expect(job.retries).toBe(4);
+        expect(handler).toHaveBeenCalledTimes(4);
+    })
 });
