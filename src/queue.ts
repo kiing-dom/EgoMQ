@@ -7,6 +7,7 @@ type JobHandler = (payload: any) => Promise<void> | void;
 export class Queue {
   private readonly handlers: Map<string, JobHandler> = new Map();
   private readonly jobs: Job[] = [];
+  private readonly deadLetterQueue: Job[] = [];
 
   register(type: string, handler: JobHandler) {
     this.handlers.set(type, handler);
@@ -66,6 +67,10 @@ export class Queue {
       this.jobs.push(job);
     }
 
+    if (job.status === "failed") {
+      this.deadLetterQueue.push(job);
+    }
+
     return job
   }
 
@@ -77,5 +82,9 @@ export class Queue {
 
   getJobs(): Job[] {
     return this.jobs;
+  }
+
+  getDeadLetterQueueJobs(): Job[] {
+    return this.deadLetterQueue;
   }
 }

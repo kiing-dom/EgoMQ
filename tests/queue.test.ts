@@ -101,6 +101,26 @@ describe("Queue", () => {
         vi.useRealTimers();
     });
 
+    it ("adds failed job to dead letter queue after maxRetries is exhausted without success", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue();
+
+        const handler = vi.fn().mockRejectedValue(new Error("it's really broke"));
+        queue.register("never_last", handler);
+
+        const job = await queue.enqueue("never_last", {});
+
+        const startPromise = queue.start();
+
+        await vi.runAllTimersAsync();
+        await startPromise;
+
+        expect(queue.getDeadLetterQueueJobs()).toHaveLength(1);
+        
+        vi.useRealTimers();
+    })
+
     it ("processNext() waits for backoff before returning the retried job", async () => {
         vi.useFakeTimers();
 
