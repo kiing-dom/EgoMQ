@@ -109,7 +109,7 @@ describe("Queue", () => {
         const handler = vi.fn().mockRejectedValue(new Error("it's really broke"));
         queue.register("never_last", handler);
 
-        const job = await queue.enqueue("never_last", {});
+        await queue.enqueue("never_last", {});
 
         const startPromise = queue.start();
 
@@ -117,7 +117,7 @@ describe("Queue", () => {
         await startPromise;
 
         expect(queue.getDeadLetterQueueJobs()).toHaveLength(1);
-        
+
         vi.useRealTimers();
     })
 
