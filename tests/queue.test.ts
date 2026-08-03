@@ -96,7 +96,7 @@ describe("Queue", () => {
 
         expect(job.status).toBe("failed");
         expect(job.retries).toBe(2);
-        expect(handler).toHaveBeenCalledTimes(2);
+        expect(handler).toHaveBeenCalledTimes(3); // initial attempt + retries
 
         vi.useRealTimers();
     });
@@ -139,6 +139,99 @@ describe("Queue", () => {
         const result = await resultPromise;
 
         expect(result?.status).toBe("completed");
+        vi.useRealTimers();
+    })
+
+    it ("moves a job back to pending and it gets processed again when retryDeadLetter() is called", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue();
+        const handler = vi.fn().mockRejectedValue(new Error("bad one"));
+
+        queue.register("be_intentional", handler);
+
+        const job: Job = await queue.enqueue("be_intentional", {});
+
+        const startPromise = queue.start();
+
+        await vi.runAllTimersAsync();
+        await startPromise;
+
+        expect(queue.getDeadLetterQueueJobs()).toHaveLength(1);
+        
+        
+        queue.retryDeadLetter(job.id);
+        
+        expect(job.status).toBe("pending");
+        expect(job.retries).toBe(0);
+        expect(job.runAt).toEqual(new Date());
+        expect(job.error).toBeUndefined();
+
+        expect(queue.getJobs()).toHaveLength(1);
+        vi.useRealTimers();
+    });
+
+    it ("does not process jobs sitting in the dead letter queue", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue();
+        const handler = vi.fn().mockRejectedValue(new Error("take Ls"));
+
+        queue.register("LLL", handler);
+
+        await queue.enqueue("LLL", handler, { maxRetries: 2});
+
+        const firstCall = queue.start();
+        const secondCall = queue.start();
+
+        await vi.runAllTimersAsync();
+        await firstCall;
+
+        expect(queue.getDeadLetterQueueJobs()).toHaveLength(1);
+        expect(queue.getJobs()).toHaveLength(0);
+
+        await secondCall;
+
+        expect(handler).toHaveBeenCalledTimes(3);
+        expect(queue.getDeadLetterQueueJobs()).toHaveLength(1);
+        expect(queue.getJobs()).toHaveLength(0);
+
+        vi.useRealTimers();
+    })
+
+    it ("only returns failed jobs in the dead letter queue not pending/running ones", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue();
+
+        const failHandler = vi.fn().mockRejectedValue(new Error("you are a failure!"));
+        const runningHandler = vi.fn().mockReturnValue(new Promise(() => {}));
+        const pendingHandler = vi.fn().mockResolvedValue("ok");
+
+        queue.register("fail", failHandler);
+        queue.register("run", runningHandler);
+        queue.register("pend", pendingHandler);
+
+        const failedJob = await queue.enqueue("fail", {}, { maxRetries: 0});
+
+        // move failedJob to DLQ
+        const startPromise = queue.start();
+        await vi.runAllTimersAsync();
+        await startPromise;
+
+        const pendingJob = await queue.enqueue("pend", {});
+        const runningJob = await queue.enqueue("run", {});
+
+        // assertions
+        const dlqJobs = queue.getDeadLetterQueueJobs();
+
+        expect(dlqJobs).toHaveLength(1);
+        expect(dlqJobs[0].id).toBe(failedJob.id);
+
+        const dlqIds = dlqJobs.map((j) => j.id);
+        expect(dlqIds).not.toContain(pendingJob.id);
+        expect(dlqIds).not.toContain(runningJob.id);
+
         vi.useRealTimers();
     })
 });

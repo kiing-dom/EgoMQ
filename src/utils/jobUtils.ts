@@ -6,10 +6,10 @@ export async function processJob(job: Job, handler: (payload: unknown) => void |
         await handler(job.payload);
         job.status = "completed";
     } catch (error) {
-        job.retries += 1;
         job.error = error instanceof Error ? error.message : String(error);
-
+        
         if (job.retries < job.maxRetries) {
+            job.retries += 1;
             job.status = "pending";
             
             const backoffMs = Math.min(1000 * 2 * job.retries, 30_000);

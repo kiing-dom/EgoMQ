@@ -65,9 +65,7 @@ export class Queue {
 
     if (job.status === "pending") {
       this.jobs.push(job);
-    }
-
-    if (job.status === "failed") {
+    } else if (job.status === "failed") {
       this.deadLetterQueue.push(job);
     }
 
@@ -86,5 +84,36 @@ export class Queue {
 
   getDeadLetterQueueJobs(): Job[] {
     return this.deadLetterQueue;
+  }
+
+  retryDeadLetter(jobId: string): void {
+    const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+
+    if (index === -1) {
+      throw new Error(`No dead-lettered job found with id "${jobId}"`);
+    }
+
+    const [job] = this.deadLetterQueue.splice(index, 1);
+
+    job.status = "pending";
+    job.retries = 0;
+    job.runAt = new Date();
+    job.error = undefined;
+
+    this.jobs.push(job);
+  }
+
+  purgeDeadLetterQueue(): void {
+    this.deadLetterQueue.length = 0;
+  }
+
+  purgeDeadLetterJob(jobId: string): void {
+    const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+
+    if (index === -1) {
+      throw new Error(`No dead-lettered job found with id "${jobId}"`);
+    }
+    
+    this.deadLetterQueue.splice(index, 1);
   }
 }
