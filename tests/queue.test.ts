@@ -1,9 +1,0 @@
-import { describe, it, expect, vi } from "vitest";
-import { Queue } from '../src/queue';
-import { Job } from '../src/jobs';
-
-const UUID_V4_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-
-describe("Queue", () => {
-    
-});

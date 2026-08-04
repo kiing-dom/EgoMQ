@@ -1,39 +1,64 @@
-import type { Job } from "./jobs";
+import type { Job, JobRow } from "./jobs";
+import { rowToJob } from "./jobs";
+
 import { DEFAULT_MAX_ATTEMPTS } from "./retry";
 import { processJob } from "./utils/jobUtils";
+
+import { Database } from "bun:sqlite";
+import { readFileSync } from "node:fs"
 
 type JobHandler = (payload: any) => Promise<void> | void;
 
 export class Queue {
   private readonly handlers: Map<string, JobHandler> = new Map();
-  private readonly jobs: Job[] = [];
+  private db: Database;
+
+  private readonly jobs: Job[] = []; // removing when db stuff is sorted
   private readonly deadLetterQueue: Job[] = [];
+
+  constructor(dbPath: string, schemaPath: string) {
+    this.db = new Database(dbPath);
+    this.db.run(readFileSync(schemaPath, 'utf8'));
+
+    /* crash recovery - anything left running from a previous process
+     didnt actually finish so it goes back in the queue
+     */
+    this.db
+      .query(`UPDATE jobs SET status = 'pending' WHERE status = 'running'`)
+      .run();
+  }
 
   register(type: string, handler: JobHandler) {
     this.handlers.set(type, handler);
   }
 
-  async enqueue(
-    type: string,
-    payload: unknown,
-    options?: { maxRetries?: number },
-  ) : Promise<Job> {
-    const now = new Date();
-    const maxRetries = options?.maxRetries ?? DEFAULT_MAX_ATTEMPTS;
-
+  async enqueue(type: string, payload: unknown, maxRetries = 3) {
     const job: Job = {
       id: crypto.randomUUID(),
       type,
       payload,
       status: "pending",
-      createdAt: now,
-      runAt: now,
+      createdAt: new Date(),
       retries: 0,
       maxRetries,
     };
 
-    this.jobs.push(job);
-    return job;
+    this.db
+      .query(
+        `INSERT INTO jobs (id, type, payload, status, created_at, retries, max_retries)
+          VALUES ($id, $type, $payload, $status, $createdAt, $retries, $maxRetries)`
+      )
+      .run({
+        $id: job.id,
+        $type: job.type,
+        $payload: JSON.stringify(job.payload),
+        $status: job.status,
+        $createdAt: job.createdAt.toISOString(),
+        $retries: job.retries,
+        $maxRetries: job.maxRetries,
+      });
+
+      return job.id;
   }
 
   async processNext(): Promise<Job | undefined> {
@@ -80,6 +105,13 @@ export class Queue {
 
   getJobs(): Job[] {
     return this.jobs;
+  }
+
+  getJob(jobId: string): Job | undefined {
+    const row = this.db
+      .query(`SELECT * FROM jobs WHERE id = $id`)
+      .get({ $id: jobId }) as JobRow | null;
+    return row ? rowToJob(row) : undefined;
   }
 
   getDeadLetterQueueJobs(): Job[] {
