@@ -13,9 +13,6 @@ export class Queue {
   private readonly handlers: Map<string, JobHandler> = new Map();
   private db: Database;
 
-  private readonly jobs: Job[] = []; // removing when db stuff is sorted
-  private readonly deadLetterQueue: Job[] = [];
-
   constructor(dbPath: string, schemaPath: string) {
     this.db = new Database(dbPath);
     this.db.run(readFileSync(schemaPath, "utf8"));
@@ -127,6 +124,14 @@ export class Queue {
     return row ? rowToJob(row) : undefined;
   }
 
+  getDeadLetterQueueJobs(): Job[] | undefined {
+    const rows = this.db
+    .query(`SELECT * FROM dead_letter_jobs`)
+    .all() as JobRow[];
+
+    return rows.map((row) => rowToJob(row));
+  }
+
   private persistJobState(job: Job) {
     if (job.status === "failed") {
       this.moveToDeadLetter(job);
@@ -174,6 +179,7 @@ export class Queue {
           $id: job.id,
           $type: job.type,
           $payload: JSON.stringify(job.payload),
+          $status: job.status,
           $createdAt: job.createdAt.toISOString(),
           $retries: job.retries,
           $maxRetries: job.maxRetries,
@@ -186,38 +192,38 @@ export class Queue {
   }
 
   // TODO: rewrite for sql impl
-  retryDeadLetter(jobId: string): void {
-    const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+  // retryDeadLetter(jobId: string): void {
+  //   const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
 
-    if (index === -1) {
-      throw new Error(`No dead-lettered job found with id "${jobId}"`);
-    }
+  //   if (index === -1) {
+  //     throw new Error(`No dead-lettered job found with id "${jobId}"`);
+  //   }
 
-    const [job] = this.deadLetterQueue.splice(index, 1);
+  //   const [job] = this.deadLetterQueue.splice(index, 1);
 
-    job.status = "pending";
-    job.retries = 0;
-    job.runAt = new Date();
-    job.error = undefined;
+  //   job.status = "pending";
+  //   job.retries = 0;
+  //   job.runAt = new Date();
+  //   job.error = undefined;
 
-    this.jobs.push(job);
-  }
-
-  // TODO: rewrite for sql
-  purgeDeadLetterQueue(): void {
-    this.deadLetterQueue.length = 0;
-  }
+  //   this.jobs.push(job);
+  // }
 
   // TODO: rewrite for sql
-  purgeDeadLetterJob(jobId: string): void {
-    const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+  // purgeDeadLetterQueue(): void {
+  //   this.deadLetterQueue.length = 0;
+  // }
 
-    if (index === -1) {
-      throw new Error(`No dead-lettered job found with id "${jobId}"`);
-    }
+  // // TODO: rewrite for sql
+  // purgeDeadLetterJob(jobId: string): void {
+  //   const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
 
-    this.deadLetterQueue.splice(index, 1);
-  }
+  //   if (index === -1) {
+  //     throw new Error(`No dead-lettered job found with id "${jobId}"`);
+  //   }
+
+  //   this.deadLetterQueue.splice(index, 1);
+  // }
 
   // test only helper
   _setRunAtForTest(jobId: string, runAt: Date) {

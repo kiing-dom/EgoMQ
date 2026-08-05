@@ -105,5 +105,34 @@ describe("queue processNext / start", () => {
         job = queue.getJob(jobId);
         expect(job?.status).toBe("completed");
         expect(job?.error).toBeUndefined();
+
+        vi.useRealTimers();
     });
+
+    it ("moves a job to the dead letter queue when retries are exhausted", async () => {
+        vi.useFakeTimers();
+
+        const queue = new Queue(TEST_DB, schemaPath);
+        const handler = vi.fn().mockRejectedValue(new Error("hold this L"));
+
+        queue.register(sendEmail, handler);
+
+
+        const jobId = await queue.enqueue(sendEmail, {});
+        
+        vi.runAllTimersAsync();
+        await queue.start();
+
+        const dlq = queue.getDeadLetterQueueJobs();
+        const dead = dlq?.find((j) => j.id === jobId);
+        expect(dead).toBeDefined();
+        expect(dead?.status).toBe("failed");
+        expect(dead?.error).toContain("hold this L");
+        expect(dead?.retries).toBe(dead?.maxRetries);
+
+        const next = await queue.processNext();
+        expect(next).toBeUndefined();
+
+        vi.useRealTimers();
+    })
 }) 
