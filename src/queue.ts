@@ -1,5 +1,5 @@
-import type { Job, JobRow } from "./jobs";
-import { rowToJob } from "./jobs";
+import type { DeadLetterJob, DeadLetterJobRow, Job, JobRow } from "./jobs";
+import { rowToJob, rowToDeadLetterJob } from "./jobs";
 
 import { DEFAULT_MAX_ATTEMPTS } from "./retry";
 import { processJob } from "./utils/jobUtils";
@@ -124,12 +124,12 @@ export class Queue {
     return row ? rowToJob(row) : undefined;
   }
 
-  getDeadLetterQueueJobs(): Job[] | undefined {
+  getDeadLetterQueueJobs(): DeadLetterJob[] | undefined {
     const rows = this.db
     .query(`SELECT * FROM dead_letter_jobs`)
-    .all() as JobRow[];
+    .all() as DeadLetterJobRow[];
 
-    return rows.map((row) => rowToJob(row));
+    return rows.map((row) => rowToDeadLetterJob(row));
   }
 
   private persistJobState(job: Job) {
@@ -191,39 +191,51 @@ export class Queue {
     moveTx(job); // if either query fails/throws, both are rolled back
   }
 
-  // TODO: rewrite for sql impl
-  // retryDeadLetter(jobId: string): void {
-  //   const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+  retryDeadLetter(jobId: string): void {
+    const row = this.db
+      .query(`SELECT * FROM dead_letter_jobs WHERE id = $id`)
+      .get({ $id: jobId }) as DeadLetterJobRow | null;
 
-  //   if (index === -1) {
-  //     throw new Error(`No dead-lettered job found with id "${jobId}"`);
-  //   }
+      if (!row) {
+        throw new Error(`No dead-lettered job found with id "${jobId}`);
+      }
 
-  //   const [job] = this.deadLetterQueue.splice(index, 1);
+      const now = new Date().toISOString();
 
-  //   job.status = "pending";
-  //   job.retries = 0;
-  //   job.runAt = new Date();
-  //   job.error = undefined;
+      this.db.transaction(() => {
+        this.db
+          .query(`DELETE FROM dead_letter_jobs WHERE id = $id`)
+          .run({ $id: jobId });
 
-  //   this.jobs.push(job);
-  // }
+        this.db
+          .query(
+            `INSERT INTO jobs (id, type, payload, status, created_at, retries, max_retries, run_at)
+            VALUES ($id, $type, $payload, 'pending', $created_at, 0, $max_retries, $run_at)`
+          )
+          .run({
+            $id: row.id,
+            $type: row.type,
+            $payload: row.payload,
+            $created_at: row.created_at,
+            $max_retries: row.max_retries,
+            $run_at: now,
+          });
+      })();
+  }
 
-  // TODO: rewrite for sql
-  // purgeDeadLetterQueue(): void {
-  //   this.deadLetterQueue.length = 0;
-  // }
+  purgeDeadLetterQueue(): void {
+    this.db.query(`DELETE FROM dead_letter_jobs`).run();
+  }
 
-  // // TODO: rewrite for sql
-  // purgeDeadLetterJob(jobId: string): void {
-  //   const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
+  purgeDeadLetterJob(jobId: string): void {
+    const result = this.db
+      .query(`DELETE FROM dead_letter jobs WHERE id = $id`)
+      .run({ $id: jobId });
 
-  //   if (index === -1) {
-  //     throw new Error(`No dead-lettered job found with id "${jobId}"`);
-  //   }
-
-  //   this.deadLetterQueue.splice(index, 1);
-  // }
+    if (result.changes === 0) {
+      throw new Error(`No dead-lettered job found with id "${jobId}"`);
+    }
+  }
 
   // test only helper
   _setRunAtForTest(jobId: string, runAt: Date) {
