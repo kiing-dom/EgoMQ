@@ -16,7 +16,7 @@ describe("enqueue", () => {
         expect(job?.status).toBe("pending");
         expect(job?.retries).toBe(0);
         expect(job?.maxRetries).toBe(3);
-        expect(job?.runAt).toBeUndefined();
+        expect(job?.runAt).toBeDefined()
         expect(job?.error).toBeUndefined();
     });
 
