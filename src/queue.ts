@@ -33,14 +33,16 @@ export class Queue {
   }
 
   async enqueue(type: string, payload: unknown, options?: { maxRetries: number }) {
+    const now = new Date();
     const job: Job = {
       id: crypto.randomUUID(),
       type,
       payload,
       status: "pending",
-      createdAt: new Date(),
+      createdAt: now,
       retries: 0,
       maxRetries: options?.maxRetries ?? 3,
+      runAt: now
     };
 
     this.db
@@ -56,6 +58,7 @@ export class Queue {
         $createdAt: job.createdAt.toISOString(),
         $retries: job.retries,
         $maxRetries: job.maxRetries,
+        $runAt: job.runAt.toISOString()
       });
 
       return job.id;
@@ -63,48 +66,57 @@ export class Queue {
 
   async processNext(): Promise<Job | undefined> {
     const now = new Date();
-    const index = this.jobs.findIndex(
-      (j) => j.status === "pending" && j.runAt <= now
-    );
+    
+    const dueRow = this.db
+      .query(
+        `SELECT * FROM jobs WHERE status = 'pending' AND run_at <= $now
+          ORDER BY created_at ASC LIMIT 1`
+      )
+      .get({ $now: now.toISOString() }) as any;
 
-    if (index === -1) {
-      if (this.jobs.length === 0) return undefined;
+    if (!dueRow) {
+      const nextRow = this.db
+        .query(
+          `SELECT run_at FROM jobs WHERE status = 'pending' ORDER BY run_at ASC LIMIT 1`
+        )
+        .get() as any;
+        if (!nextRow) return undefined;
 
-      const nextRunAt = this.jobs.reduce(
-        (earliest, j) => (j.runAt < earliest ? j.runAt : earliest),
-        this.jobs[0].runAt
-      );
-      const waitMs = Math.max(0, nextRunAt.getTime() - now.getTime());
-      await new Promise((resolve) => setTimeout(resolve, waitMs));
+        const nextRunAt = new Date(nextRow.run_at);
+        const waitMs = Math.max(0, nextRunAt.getTime() - now.getTime());
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+
+        // requery instead of using stale index
+        return this.processNext();
     }
 
-    const [job] = this.jobs.splice(index, 1);
+    const job = rowToJob(dueRow);
     const handler = this.handlers.get(job.type);
 
     if (!handler) {
-      console.warn(`No handler registered for the job type: ${job.type}`);
+      console.warn(`No handler registered for job type: ${job.type}`);
+      // NOTE: in the in-memory version, we removed it permanently
+      // but it might be better to hold the unregistered job, will be status "pending"
+      // until the job is either removed manually or actually registered
       return job;
     }
 
     await processJob(job, handler);
 
-    if (job.status === "pending") {
-      this.jobs.push(job);
-    } else if (job.status === "failed") {
-      this.deadLetterQueue.push(job);
-    }
-
-    return job
   }
 
   async start() {
-    while (this.jobs.length > 0) {
+    while (await this.hasActiveJobs()) {
       await this.processNext();
     }
   }
 
-  getJobs(): Job[] {
-    return this.jobs;
+  private async hasActiveJobs(): Promise<boolean> {
+    const row = this.db
+      .query(`SELECT COUNT(*) as count FROM jobs WHERE status IN ('pending', 'running')`)
+      .get() as any;
+
+      return row.count > 0;
   }
 
   getJob(jobId: string): Job | undefined {
@@ -114,10 +126,49 @@ export class Queue {
     return row ? rowToJob(row) : undefined;
   }
 
-  getDeadLetterQueueJobs(): Job[] {
-    return this.deadLetterQueue;
+  private persistJobState(job: Job) {
+    if (job.status === "failed") {
+      this.moveToDeadLetter(job);
+      return;
+    }
+
+    this.db
+      .query(
+        `UPDATE jobs
+        SET STATUS = $status, retries = $retries, run_at = $runAt, error = $error
+        where id = $id`
+      )
+      .run({
+        $status: job.status,
+        $retries: job.retries,
+        $runAt: job.runAt.toISOString(),
+        $error: job.error ?? null,
+        $id: job.id,
+      })
   }
 
+  private moveToDeadLetter(job: Job) {
+    this.db.query(`DELETE FROM jobs WHERE id = $id`).run({ $id: job.id });
+
+    this.db
+      .query(
+        `INSERT INTO dead_letter_jobs
+          (id, type, payload, status, created_at, retries, max_retries, error, moved_at)
+          VALUES ($id, $type, $payload, $status, $createdAt, $retries, $maxRetries, $error, $movedAt)`
+      )
+      .run({
+        $id: job.id,
+        $type: job.type,
+        $payload: JSON.stringify(job.payload),
+        $createdAt: job.createdAt.toISOString(),
+        $retries: job.retries,
+        $maxRetries: job.maxRetries,
+        $error: job.error ?? null,
+        $movedAt: new Date().toISOString()
+      });
+  }
+
+  // TODO: rewrite for sql impl
   retryDeadLetter(jobId: string): void {
     const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
 
@@ -135,10 +186,12 @@ export class Queue {
     this.jobs.push(job);
   }
 
+  // TODO: rewrite for sql
   purgeDeadLetterQueue(): void {
     this.deadLetterQueue.length = 0;
   }
 
+  // TODO: rewrite for sql
   purgeDeadLetterJob(jobId: string): void {
     const index = this.deadLetterQueue.findIndex((j) => j.id === jobId);
 

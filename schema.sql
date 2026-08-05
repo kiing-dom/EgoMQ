@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     retries INTEGER NOT NULL DEFAULT 0,
     max_retries INTEGER NOT NULL DEFAULT 3,
     error TEXT,
-    run_at TEXT
+    run_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS dead_letter_jobs (
