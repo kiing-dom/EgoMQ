@@ -5,6 +5,7 @@ export async function processJob(job: Job, handler: (payload: unknown) => void |
         job.status = "running";
         await handler(job.payload);
         job.status = "completed";
+        job.error = undefined;
     } catch (error) {
         job.error = error instanceof Error ? error.message : String(error);
         
