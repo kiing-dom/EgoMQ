@@ -32,7 +32,7 @@ export class Queue {
     this.handlers.set(type, handler);
   }
 
-  async enqueue(type: string, payload: unknown, maxRetries = 3) {
+  async enqueue(type: string, payload: unknown, options?: { maxRetries: number }) {
     const job: Job = {
       id: crypto.randomUUID(),
       type,
@@ -40,7 +40,7 @@ export class Queue {
       status: "pending",
       createdAt: new Date(),
       retries: 0,
-      maxRetries,
+      maxRetries: options?.maxRetries ?? 3,
     };
 
     this.db
