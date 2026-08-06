@@ -1,7 +1,6 @@
 import type { DeadLetterJob, DeadLetterJobRow, Job, JobRow } from "./jobs";
 import { rowToJob, rowToDeadLetterJob } from "./jobs";
 
-import { DEFAULT_MAX_ATTEMPTS } from "./retry";
 import { processJob } from "./utils/jobUtils";
 
 import { Database } from "bun:sqlite";
@@ -261,7 +260,17 @@ export class Queue {
     }
   }
 
-  // test only helper
+  close(): void {
+    this.db.close();
+  }
+
+  // test only helpers
+  _setStatusForTest(jobId: string, status: Job["status"]) {
+    this.db
+      .query(`UPDATE jobs SET status = $status WHERE id = $id`)
+      .run({ $status: status, $id: jobId });
+  }
+
   _setRunAtForTest(jobId: string, runAt: Date) {
     this.db
       .query(`UPDATE jobs SET run_at = $runAt WHERE id = $id`)
