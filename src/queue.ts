@@ -124,6 +124,22 @@ export class Queue {
     return row ? rowToJob(row) : undefined;
   }
 
+  getJobs(): Job[] | undefined {
+    const rows = this.db
+      .query(`SELECT * FROM jobs`)
+      .all() as JobRow[];
+
+    return rows.map((row) => rowToJob(row));
+  }
+
+  getJobCount(): number {
+    const rows = this.db
+      .query(`SELECT COUNT(*) AS count FROM jobs`)
+      .get() as { count: number }
+
+    return rows?.count ?? 0;
+  }
+
   getDeadLetterQueueJobs(): DeadLetterJob[] | undefined {
     const rows = this.db
     .query(`SELECT * FROM dead_letter_jobs`)

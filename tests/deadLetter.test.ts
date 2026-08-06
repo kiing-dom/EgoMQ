@@ -72,5 +72,40 @@ describe("making sure the dead letter queue helpers work", () => {
         queue.purgeDeadLetterJob(id1);
 
         expect(queue.getDeadLetterCount()).toBe(1);
+
+        vi.useRealTimers();
     });
+
+    it ("retryDeadLetter(jobId) removes failed job from dead_letter_jobs, and adds it back to jobs to be retried", async () => {
+        vi.useFakeTimers();
+
+         const queue = new Queue(TEST_DB, schemaPath);
+        const handler = vi.fn().mockRejectedValue(new Error("fail!"));
+
+        queue.register(sendEmail, handler);
+
+        const id1 = await queue.enqueue(sendEmail, {});
+        await queue.enqueue(sendEmail, {});
+
+        const startPromise = queue.start();
+
+        vi.runAllTimersAsync();
+        await startPromise;
+
+        expect(queue.getDeadLetterCount()).toBe(2);
+        expect(queue.getJob(id1)).toBeUndefined();
+
+        queue.retryDeadLetter(id1);
+
+        expect(queue.getDeadLetterCount()).toBe(1);
+        expect(queue.getJob(id1)).toBeDefined();
+
+        const job = queue.getJob(id1);
+        
+        expect(job?.status).toBe('pending');
+        expect(job?.retries).toBe(0);
+        expect(job?.error).toBeUndefined();
+
+        vi.useRealTimers();
+    })
 })
