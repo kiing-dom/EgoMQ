@@ -132,6 +132,14 @@ export class Queue {
     return rows.map((row) => rowToDeadLetterJob(row));
   }
 
+  getDeadLetterCount(): number {
+    const query = this.db
+      .query(`SELECT COUNT(*) AS count FROM dead_letter_jobs`)
+      .get() as { count: number }
+
+      return query?.count ?? 0;
+  }
+
   private persistJobState(job: Job) {
     if (job.status === "failed") {
       this.moveToDeadLetter(job);
@@ -229,7 +237,7 @@ export class Queue {
 
   purgeDeadLetterJob(jobId: string): void {
     const result = this.db
-      .query(`DELETE FROM dead_letter jobs WHERE id = $id`)
+      .query(`DELETE FROM dead_letter_jobs WHERE id = $id`)
       .run({ $id: jobId });
 
     if (result.changes === 0) {
