@@ -15,6 +15,8 @@ export class Queue {
   constructor(dbPath: string, schemaPath: string) {
     this.db = new Database(dbPath);
     this.db.run(readFileSync(schemaPath, "utf8"));
+    this.db.run("PRAGMA journal_mode = WAL");
+    this.db.run("PRAGMA busy_timeout = 5000");
 
     /* crash recovery - anything left running from a previous process
      didnt actually finish so it goes back in the queue
@@ -67,16 +69,22 @@ export class Queue {
   async processNext(): Promise<Job | undefined> {
     const now = new Date();
 
-    const dueRow = this.db
+    const claimedRow = this.db
       .query(
-        `SELECT * FROM jobs WHERE status = 'pending' AND run_at <= $now
-          ORDER BY created_at ASC LIMIT 1`,
+        `UPDATE jobs
+          SET status = 'running'
+          WHERE id = (
+            SELECT id FROM jobs
+            WHERE status = 'pending' AND run_at <= $now
+            ORDER BY created_at ASC LIMIT 1
+          )
+          RETURNING *`,
       )
-      .get({ $now: now.toISOString() }) as any;
+      .get({ $now: now.toISOString() }) as JobRow | undefined;
 
-    if (!dueRow) return undefined;
+    if (!claimedRow) return undefined;
 
-    const job = rowToJob(dueRow);
+    const job = rowToJob(claimedRow);
     const handler = this.handlers.get(job.type);
 
     if (!handler) {

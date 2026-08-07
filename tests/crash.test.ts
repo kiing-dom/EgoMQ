@@ -13,7 +13,7 @@ beforeEach(() => {
 
 afterEach(() => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
-})
+});
 
 describe("queue crash recovery", () => {
     it("recovers a job stuck in 'running' to pending on restart", async () => {

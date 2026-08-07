@@ -1,6 +1,9 @@
 import { Queue } from '../src/queue';
 
-const queue = new Queue();
+const TEST_DB = "./db/example.db";
+const schemaPath = "./schema.sql"
+
+const queue = new Queue(TEST_DB, schemaPath);
 
 queue.register("hello", async(payload: {name: string}) => {
     console.log(`hello ${payload.name}!`);
